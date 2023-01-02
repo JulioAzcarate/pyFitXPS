@@ -19,7 +19,6 @@ This project uses the most precise physical focus during the tuning process. The
 - [x] Read one .XY file for separated region from SpecLab Prodigy software.
 - [ ] Read one .XY file for "all data in one file".
 - [ ] Read .XY file for separated scans.
-- [ ]
 
 ### Fitting procedures
 
