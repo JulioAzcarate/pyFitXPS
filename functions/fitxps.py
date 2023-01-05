@@ -85,7 +85,7 @@ def gauss_nor_h(x, center=0.0, gw=0.5):
     gaussian(x, center, gw) =
         exp(-4 * ln2 * ((x - center) / gw)**2)
     """
-    return exp(-4 * ln2 * ((x - center) / gw)**2)
+    return exp(-4 * ln2 * ((x - center) / not_zero(gw))**2)
 
 def gauss_nor_area(x,center, gw=0.5):
     """ 
@@ -94,8 +94,8 @@ def gauss_nor_area(x,center, gw=0.5):
     """
     sigma = gw / 2.355
 
-    return ((1 / (max(tiny, s2pi * sigma)))
-            * exp(-(1.0 * x - center)**2 / max(tiny, (2 * sigma**2))))
+    return ((1 / (s2pi * not_zero(sigma)))
+            * exp(-(1.0 * x - center)**2 / (2 * not_zero(sigma**2))))
 
 
 def FL_LDOS(x, m, b, c, A, center, T):
@@ -262,6 +262,89 @@ def Energy_Corr_one(region, shift):
 
     print(shift)
 
+    plot_corr(region)
+
+    # plt.plot(
+    #     region['data_orig']['BE'],
+    #     region['data_orig']['intensity'],
+    #     label='Original Data',
+    #     linestyle='dotted',
+    #     alpha=0.7,
+    #     color='C0')
+    # plt.plot(
+    #     region['data_corr']['BE'],
+    #     region['data_orig']['intensity'],
+    #     label='Corrected Data',
+    #     color='C0')
+    # plt.xlabel('BE [eV]')
+    # plt.ylabel('Intensity [cps]')
+    # plt.legend()
+
+def Energy_Corr_one_FL(region, ref_region):
+    """
+    Correction for energy scale
+
+    Parameters
+    ----------
+    region: string of names for each dict of data
+    shift : float
+        value to shift the energy scale in eV.
+
+    Returns
+    -------
+    Update the same selected dictionary with a dict containing the corrected
+    energy scale as numpy.array
+
+    """
+    shift = ref_region['results'].best_values['FL_center']
+
+    BE = region['data_orig']['BE'] - shift
+    KE = region['data_orig']['KE'] - shift
+
+    corr = {}
+    corr.update({'BE': BE})
+    corr.update({'KE': KE})
+    region.update({'data_corr': corr})
+
+    print(shift)
+
+    plot_corr(region)
+
+def Energy_Corr_list_FL(list_of_regions, ref_region):
+    """
+    Correction for energy scale to every region in the list
+
+    Parameters
+    ----------
+    region: list of dictionary with data
+    ref_region : variable name
+        name of fitted region (valence band) as reference
+
+    Returns
+    -------
+    Update the same selected dictionary with a dict containing the corrected
+    energy scale as numpy.array
+
+    """
+    shift = ref_region['results'].best_values['FL_center']
+
+    for region in list_of_regions:
+        BE = region['data_orig']['BE'] - shift
+        KE = region['data_orig']['KE'] - shift
+        
+        corr = {}
+        corr.update({'BE': BE})
+        corr.update({'KE': KE})
+        region.update({'data_corr': corr})
+
+        region.keys()
+
+    print(shift)
+
+def plot_corr(region):
+    """
+    Plot the energy shift correction of the region
+    """
     plt.plot(
         region['data_orig']['BE'],
         region['data_orig']['intensity'],
@@ -277,6 +360,19 @@ def Energy_Corr_one(region, shift):
     plt.xlabel('BE [eV]')
     plt.ylabel('Intensity [cps]')
     plt.legend()
+
+def plot_Energy_Corr(region):
+    """
+    Plot the energy shift correction for every region defined
+    """
+    if type(region) is dict:
+        plot_corr(region)
+    elif type(region) is list:
+        for i in region:
+            plot_corr(i)
+    else :
+        print("Is not possible to plot the energy shift")
+
 
 
 def range_to_fit(region, data_set, energy_scale, xmin, xmax):
