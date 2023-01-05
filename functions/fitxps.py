@@ -21,6 +21,7 @@ import numpy as np
 
 # --- Matplotlib --------------------------------------------------------------
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 # --- LMFIT -------------------------------------------------------------------
 from lmfit import Parameters, CompositeModel, Model
@@ -75,28 +76,29 @@ def not_zero(value):
 
 
 def linear(x, m, b):
-    """Lienear function"""
+    """Linear function"""
     return m * x + b
 
 
-def gaussian_normalized(x, center=0.0, gw=0.5):
-    """Return a 1-dimensional Gaussian function normalized in area.
+def gauss_nor_h(x, center=0.0, gw=0.5):
+    """Return a 1-dimensional Gaussian function normalized in peack height.
     gaussian(x, center, gw) =
-        (1/(s2pi*gw)) * exp(-(1.0*x-center)**2 / (2*gw**2))
-    """
-    return ((1 / (max(tiny, s2pi * gw)))
-            * exp(-(1.0 * x - center)**2 / max(tiny, (2 * gw**2))))
-
-
-def gn(x, center=0.0, gw=0.5):
-    """Return a 1-dimensional Gaussian function normalized in area.
-    gaussian(x, center, gw) =
-        (1/(s2pi*gw)) * exp(-(1.0*x-center)**2 / (2*gw**2))
+        exp(-4 * ln2 * ((x - center) / gw)**2)
     """
     return exp(-4 * ln2 * ((x - center) / gw)**2)
 
+def gauss_nor_area(x,center, gw=0.5):
+    """ 
+    Return a 1-dimensional Gaussian function normalized in peack area.
+    gaussian(x, center, gw) =
+    """
+    sigma = gw / 2.355
 
-def FL_LDOS(x, m, b, c, center, T):
+    return ((1 / (max(tiny, s2pi * sigma)))
+            * exp(-(1.0 * x - center)**2 / max(tiny, (2 * sigma**2))))
+
+
+def FL_LDOS(x, m, b, c, A, center, T):
     """Return a thermal distribution (FermiEdge) times Linear DOS
 
     - Fermi-Dirac distribution:
@@ -112,14 +114,14 @@ def FL_LDOS(x, m, b, c, center, T):
 
     kBT = 0.025852 / 300.0 * T
 
-    FE = c + (b + m * (x - center)) * \
+    FE = c + A * (b + m * (x - center)) * \
         real(1 / (exp((x - center) / not_zero(kBT)) + 1))
     return FE
 
 
 # - - - Composed Function - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-def FermiEdge(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
+def FermiEdge(region, energy_scale, xmin, xmax, A, c, b, m, T, gw, center):
     """
     Return the fit of FermiEdge times linear DOS convoluted with a
     gaussian function
@@ -136,6 +138,8 @@ def FermiEdge(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
         max for range data to fit
     c : float
         background noise right to the FermiEdge
+    A : float
+        pre-exponentian factor
     b : float
         linear intercept left to the FermiEdge for the linear DOS
     m : float
@@ -165,7 +169,7 @@ def FermiEdge(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
 
     # model
     mod_FL = Model(FL_LDOS, independent_vars='x', prefix='FL_')
-    mod_g = Model(gaussian_normalized, prefix='g_')
+    mod_g = Model(gauss_nor_area, prefix='g_')
 
     # create Composite Model using the custom convolution operator
     mod = CompositeModel(mod_FL, mod_g, convolve)
@@ -177,6 +181,7 @@ def FermiEdge(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
     pars['FL_m'].set(value=m)
     pars['FL_b'].set(value=b)
     pars['FL_c'].set(value=c)
+    pars['FL_A'].set(value=A)
     pars['g_center'].set(value=center, expr='FL_center')
     pars['g_gw'].set(value=gw, min=0.2, max=1.5)
 
@@ -189,107 +194,42 @@ def FermiEdge(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
     comps = result.eval_components(x=x)
 
     # plot results
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 4])
+    fig, axd = plt.subplot_mosaic([['left', 'upper right'],
+                                   ['left', 'lower right']],
+                                  gridspec_kw=gs_kw, #figsize=(5.5, 3.5),
+                                  layout="constrained")
 
-    axes[0].plot(x, y, 'o', color='grey')
-    axes[0].plot(x, result.init_fit, 'k--', label='initial fit')
-    axes[0].plot(x, result.best_fit, 'r-', label='best fit')
-    axes[0].set_xlabel(energy_scale + ' [eV]')
-    axes[0].set_ylabel('Intensity')
-    axes[0].legend()
+    axd['left'].plot(region['data_orig']['BE'],region['data_orig']['intensity'])
 
-    axes[1].plot(x, y, 'bo')
-    axes[1].plot(x, 10 * comps['FL_'], '--', color='C0',
-                 label='10 x Fermi dist component')
-    axes[1].plot(x, 100 * comps['g_'], '-', color='C1',
-                 label='100 x Gaussian component')
-    axes[1].set_xlabel(energy_scale + ' [eV]')
-    axes[1].set_ylabel('Intensity')
-    axes[1].legend()
+    x0 = x[0] - 0.05*x[0]
+    y0 = y[-1] - 0.2*y[-1]
+    w = abs(x[0]-x[-1]) + 0.05*x[-1]
+    h = abs(y[0]-y[-1]) + 0.1*y[0]
+    rect = Rectangle((x0,y0),w,h, 
+                        fill = False,
+                        color = "purple",
+                        #linewidth = 2
+                        )
+    axd['left'].add_patch(rect)
+    # axd['left'].axvspan(x_full[index_xmin], x_full[index_xmax], y_full[index_xmin], y_full[index_xmax], alpha=0.3, color='grey')
+    
+    axd['upper right'].plot(x, result.residual, color='C2')
+    axd['lower right'].plot(x,y, 'o')
+    axd['lower right'].plot(x, result.best_fit, color='C1')
+    axd['lower right'].plot(x, 10 * comps['FL_'], '--', color='b',
+                 label='10 x Fermi dist comp')
+    axd['lower right'].plot(x, 100 * comps['g_'], '--', color='r',
+                 label='100 x Gaussian comp')
+    axd['lower right'].set_xlabel(energy_scale + ' [eV]')
+    axd['left'].set_xlabel(energy_scale + ' [eV]')
+    axd['left'].set_ylabel('Intensity')
+    axd['lower right'].legend()
 
-    fig.suptitle(
-        'FermiEde x linear DOS convoluted with gaussian distritution ')
-    plt.show()
+    fig.suptitle('FermiEdge x linear DOS convoluted with gaussian distritution')
 
     print(result.fit_report())
 
-
-def FermiEdge_gn(region, energy_scale, xmin, xmax, c, b, m, T, gw, center):
-    """
-    Return the fit of FermiEdge times linear DOS convoluted with a
-    gaussian function
-
-    Parameters
-    ----------
-    region : variable - dict name
-        name of dictionary to containg the VB region to be fitted
-    energy_scale : string
-        which energy scale be selected: 'BE' or 'KE'
-    xmin : float
-        min for range data to fit
-    xmax : float
-        max for range data to fit
-    c : float
-        background noise right to the FermiEdge
-    b : float
-        linear intercept left to the FermiEdge for the linear DOS
-    m : float
-        slope for linear DOS
-    T : float
-        temperature in Kelvin
-    gw : float
-        gaussian with
-    center : float
-        position of the FermiEdge
-
-    Returns
-    -------
-    lmfit fit_report and plot of the fitting results
-    """
-
-    # create data from broadened step
-    x_full = region['data_orig'][energy_scale]
-    y_full = region['data_orig']['intensity']
-
-    # range of data to be fitted
-    index_xmin = np.min(np.where(x_full > xmin))
-    index_xmax = np.min(np.where(x_full > xmax))
-
-    x = x_full[index_xmin:index_xmax]
-    y = y_full[index_xmin:index_xmax]
-
-    mod_FL = Model(FL_LDOS, independent_vars='x', prefix='FL_')
-    mod_g = Model(gn, prefix='g_')
-
-    # create Composite Model using the custom convolution operator
-    mod = CompositeModel(mod_FL, mod_g, convolve)
-    pars = mod.make_params()
-
-    # used as an integer index, so a very poor fit variable:
-    pars['FL_T'].set(value=T, vary=False)
-    pars['FL_center'].set(value=center, min=-2.0, max=-1.0)
-    pars['FL_m'].set(value=m)
-    pars['FL_b'].set(value=b)
-    pars['FL_c'].set(value=c)
-    pars['g_center'].set(value=center, expr='FL_center')
-    pars['g_gw'].set(value=gw, min=0.2, max=1.5)
-
-    # fit this model to data array y
-    result = mod.fit(y, params=pars, x=x)
-
-    # add result to region dict
-    region.update({'results': result})
-
-    # generate components
-    comps = result.eval_components(x=x)
-
-    result.plot(
-        title='Fitted Fermi Edge',
-        xlabel='{} [eV]'.format(energy_scale),
-        ylabel='Intensity [cps]',
-    )
-
-    print('Fermi Level at: {}'.format(result.best_values['FL_center']))
 
 
 # - - - Other special functions - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -326,13 +266,16 @@ def Energy_Corr_one(region, shift):
         region['data_orig']['BE'],
         region['data_orig']['intensity'],
         label='Original Data',
-        alpha=0.3,
+        linestyle='dotted',
+        alpha=0.7,
         color='C0')
     plt.plot(
         region['data_corr']['BE'],
         region['data_orig']['intensity'],
         label='Corrected Data',
         color='C0')
+    plt.xlabel('BE [eV]')
+    plt.ylabel('Intensity [cps]')
     plt.legend()
 
 
