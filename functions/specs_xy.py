@@ -36,6 +36,8 @@ def list_files_xy(path="samefolder"):
     list_XPS_files.sort()
     print(list_XPS_files)
 
+
+
 def load_one_file_xy(filename):
     """
     Read one .xy file and store info in a dictionary
@@ -60,7 +62,6 @@ def load_one_file_xy(filename):
         dict['data_orig']['BE'] give the x-axis for binding energy
         dict['data_orig']['intensity'] give the y-axis for intensity
     """
-    
     
     file = open(filename, 'r')
     
@@ -96,7 +97,6 @@ def load_one_file_xy(filename):
                 dict_details.update({k.strip(): v.strip()}) # add the k and v to dict
 
     dict_xy = {'details': dict_details, 
-               #'data_orig': data
                } # create the final dict
     
     # key for parameter values to be converted to each proper type
