@@ -20,6 +20,9 @@ import glob    # to find files in folders
 import sys
 import os
 
+# --- Import functions to oerder dictionary
+from collections import OrderedDict
+
 # --- import numpy as np
 from numpy import genfromtxt
 
@@ -35,18 +38,18 @@ def list_files_xy(path="samefolder"):
         XPS_files = glob.glob(path + "/*.xy")
         print(path)
     # creo lista con los nombres de los archivos ordenados alfabéticamente
-    list_XPS_files = list(XPS_files)
-    return list_XPS_files.sort()
+    list_XPS_files = XPS_files
+    return list_XPS_files
 
 
-def which_subfolders(dirname):
-    """
-    list the subfolders
-    """
-    subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
-    for dirname in list(subfolders):
-        subfolders.extend(which_subfolders(dirname))
-    return subfolders
+# def which_subfolders(dirname):
+#     """
+#     list the subfolders
+#     """
+#     subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
+#     for dirname in list(subfolders):
+#         subfolders.extend(which_subfolders(dirname))
+#     return subfolders
 
 
 
@@ -145,7 +148,7 @@ def load_one_file_xy(filename):
     return dict_xy
 
 
-def load_all_file_xy_in(folder_path):
+def load_all_files_xy_in(folder_path):
     """
     Read all files .xy in the folder. Each file in converted in a 
     dictionary, and stored all together as elements of a dictionary.
@@ -180,6 +183,7 @@ def load_all_file_xy_in(folder_path):
         dict_region = load_one_file_xy(folder_path + filename)
         exper_dict.update({dict_region['details']['Region']:dict_region})
     
-    return exper_dict
+    exper_ordered_dict = OrderedDict(sorted(exper_dict.items()))
+    return exper_ordered_dict
 
     
