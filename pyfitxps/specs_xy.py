@@ -21,10 +21,12 @@ import sys
 import os
 
 # --- Import functions to oerder dictionary
-from collections import OrderedDict
+# from collections import OrderedDict
 
 # --- import numpy as np
 from numpy import genfromtxt
+
+import matplotlib.pyplot as plt
 
 
 ###############################################################################
@@ -183,7 +185,34 @@ def load_all_files_xy_in(folder_path):
         dict_region = load_one_file_xy(folder_path + filename)
         exper_dict.update({dict_region['details']['Region']:dict_region})
     
-    exper_ordered_dict = OrderedDict(sorted(exper_dict.items()))
-    return exper_ordered_dict
+    exper_dict.keys()
 
+    return exper_dict
+
+
+def plot_region(experiment_dict, region, energy_scale):
+    """
+    plot all spectra of the same XPS' region
+
+    --------------------------------------------
+    experiment: TYPE dict
+    element   : TYPE str
+    """
+
+    res = []
+    
+    for i,j in enumerate(list(experiment_dict.keys())):
+        if region in j:
+            res.append(j)
+    res
+    
+    for spectra in res:
+        
+        plt.plot(experiment_dict[spectra]['data_orig'][energy_scale],
+                experiment_dict[spectra]['data_orig']['intensity'],
+                label=experiment_dict[spectra]['details']['Region'],
+                )
+    plt.legend()
+    plt.xlabel(energy_scale + ' [eV]')
+    plt.ylabel('Intensity (cps)')  
     
