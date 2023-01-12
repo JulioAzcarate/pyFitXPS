@@ -17,11 +17,7 @@ Created on Sun Aug 14 11:56:39 2022
 ###############################################################################
 # --- import libraries ---
 import glob    # to find files in folders
-import sys
 import os
-
-# --- Import functions to oerder dictionary
-# from collections import OrderedDict
 
 # --- import numpy as np
 from numpy import genfromtxt
@@ -214,5 +210,45 @@ def plot_region(experiment_dict, region, energy_scale):
                 )
     plt.legend()
     plt.xlabel(energy_scale + ' [eV]')
-    plt.ylabel('Intensity (cps)')  
+    plt.ylabel('Intensity (cps)')
+
+    plt.show()
+
+
+def plot_all_regions_in(experiment_dict, all_region_to_plot, energy_scale):
+    """
+    Plot all regions listed in "all_region_to_plot" from the dictionary wich 
+    contain the spectrum of the whole experiment "exper_dict".
+    """
+    
+    if len(all_region_to_plot) > 1:
+        cols = 2
+    
+
+        rows = round(len(all_region_to_plot)/2)
+    
+        fig, axs = plt.subplots(ncols=cols,nrows=rows,
+                            figsize=( 8, 3 * rows ),
+                            constrained_layout=True,
+                            )
+    
+        axs = axs.flatten()
+    
+        for spectra in list(experiment_dict.keys()):
+            for i,element in enumerate(all_region_to_plot):
+                if element in spectra:
+                    axs[i].plot(experiment_dict[spectra]['data_orig'][energy_scale],
+                   experiment_dict[spectra]['data_orig']['intensity'],
+                   label=experiment_dict[spectra]['details']['Region'],
+                   )
+                    axs[i].legend()
+                    axs[i].set_xlabel(energy_scale+' [eV]')
+                    axs[i].set_ylabel('Intensity [cps')
+        plt.show()
+
+    else:
+        region = str(all_region_to_plot).replace("['","").replace("']","")
+        plot_region(experiment_dict, region, energy_scale)
+
+    
     
