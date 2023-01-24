@@ -341,6 +341,39 @@ def Energy_Corr_list_FL(list_of_regions, ref_region):
 
     print(shift)
 
+
+def Energy_Corr_dict_FL(exper_dict, ref_region):
+    """
+    Correction for energy scale to every region in the list
+
+    Parameters
+    ----------
+    region: dictionary with whole experiment's data
+    ref_region : variable name
+        name of fitted region (valence band) as reference
+
+    Returns
+    -------
+    Update the same selected dictionary with a dict containing the corrected
+    energy scale as numpy.array
+
+    """
+    shift = ref_region['results'].best_values['FL_center']
+
+    for region in exper_dict.keys():
+        BE = exper_dict[region]['data_orig']['BE'] - shift
+        KE = exper_dict[region]['data_orig']['KE'] - shift
+        
+        corr = {}
+        corr.update({'BE': BE})
+        corr.update({'KE': KE})
+        exper_dict[region].update({'data_corr': corr})
+
+        exper_dict[region].keys()
+
+    print(shift)
+
+
 def plot_corr(region):
     """
     Plot the energy shift correction of the region

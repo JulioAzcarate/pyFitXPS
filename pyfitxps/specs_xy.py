@@ -234,7 +234,7 @@ def plot_all_regions_in(experiment_dict, all_region_to_plot, energy_scale):
     
         axs = axs.flatten()
     
-        for spectra in list(experiment_dict.keys()):
+        for spectra in sorted(list(experiment_dict.keys())):
             for i,element in enumerate(all_region_to_plot):
                 if element in spectra:
                     axs[i].plot(experiment_dict[spectra]['data_orig'][energy_scale],
