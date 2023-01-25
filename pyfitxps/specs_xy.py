@@ -178,8 +178,9 @@ def load_all_files_xy_in(folder_path):
     exper_dict = {}  
 
     for filename in files:
-        dict_region = load_one_file_xy(folder_path + filename)
-        exper_dict.update({dict_region['details']['Region']:dict_region})
+        if '.xy' in filename:
+            dict_region = load_one_file_xy(folder_path + filename)
+            exper_dict.update({dict_region['details']['Region']:dict_region})
     
     exper_dict.keys()
 
