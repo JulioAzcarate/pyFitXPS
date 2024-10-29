@@ -10,5 +10,5 @@ XPSdoniachs = Extension('XPSdoniachs_ext',
                         libraries=["boost_python310"])
 
 setup(name='XPSdoniachs',
-      packages=['.'],
+      #packages=['.'],
       ext_modules=[XPSdoniachs])

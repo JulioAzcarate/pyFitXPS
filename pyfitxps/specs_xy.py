@@ -2,15 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sun Aug 14 11:56:39 2022
+Updated on Sat Aug 05 18:30:00 2023
 
 @author: Julio C. Azcárate
 @institution: Centro Atómico Bariloche
 """
 
 ###############################################################################
-#
-#   This library contain several functions to read and load spec's XY files 
-#
+#                                                                             #
+#   This library contain several functions to read and load spec's XY files   #
+#                                                                             #
 ###############################################################################
 
 
@@ -40,16 +41,6 @@ def list_files_xy(path="samefolder"):
     return list_XPS_files
 
 
-# def which_subfolders(dirname):
-#     """
-#     list the subfolders
-#     """
-#     subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
-#     for dirname in list(subfolders):
-#         subfolders.extend(which_subfolders(dirname))
-#     return subfolders
-
-
 
 def load_one_file_xy(filename):
     """
@@ -69,6 +60,7 @@ def load_one_file_xy(filename):
                 ['BE'] binding energy
                 ['KE'] kinetic energy
                 ['intensity'] intensity (counts or counst per second)
+                [''] transmission 
     
     for example:
         dict['details']['Pass Energy'] give the pass energy of the adquisition
@@ -181,6 +173,7 @@ def load_all_files_xy_in(folder_path):
         if '.xy' in filename:
             dict_region = load_one_file_xy(folder_path + filename)
             exper_dict.update({dict_region['details']['Region']:dict_region})
+        # else pass
     
     exper_dict.keys()
 

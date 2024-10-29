@@ -168,8 +168,8 @@ def FermiEdge(region, energy_scale, xmin, xmax, A, c, b, m, T, gw, center):
     y = y_full[index_xmin:index_xmax]
 
     # model
-    mod_FL = Model(FL_LDOS, independent_vars='x', prefix='FL_')
-    mod_g = Model(gauss_nor_area, prefix='g_')
+    mod_FL = Model(FL_LDOS, independent_vars=['x'], prefix='FL_')
+    mod_g = Model(gauss_nor_area, independent_vars=['x'], prefix='g_')
 
     # create Composite Model using the custom convolution operator
     mod = CompositeModel(mod_FL, mod_g, convolve)
@@ -408,36 +408,36 @@ def plot_Energy_Corr(region):
 
 
 
-def range_to_fit(region, data_set, energy_scale, xmin, xmax):
-    '''
-    Function to crop data to be fitted. The range of data is
-    stored in "region" dictionary in the key:'data_to_fit'.
+# def range_to_fit(region, data_set, energy_scale, xmin, xmax):
+#     '''
+#     Function to crop data to be fitted. The range of data is
+#     stored in "region" dictionary in the key:'data_to_fit'.
 
-    '''
+#     '''
 
-    # create data from broadened step
-    if data_set == 'data_orig':
-        x_full = region['data_orig'][energy_scale]
-    elif data_set == 'data_corr':
-        x_full = region['data_corr'][energy_scale]
-    else:
-        print('"data_set" is not defined. Please run "region.keys()" to known which "data_set" is present.')
+#     # create data from broadened step
+#     if data_set == 'data_orig':
+#         x_full = region['data_orig'][energy_scale]
+#     elif data_set == 'data_corr':
+#         x_full = region['data_corr'][energy_scale]
+#     else:
+#         print('"data_set" is not defined. Please run "region.keys()" to known which "data_set" is present.')
 
-    # x_full = region['data_corr'][energy_scale]
-    y_full = region['data_orig']['intensity']
+#     # x_full = region['data_corr'][energy_scale]
+#     y_full = region['data_orig']['intensity']
 
-    # range of data to be fitted
-    index_xmin = np.min(np.where(x_full > xmin))
-    index_xmax = np.max(np.where(x_full < xmax))
+#     # range of data to be fitted
+#     index_xmin = np.min(np.where(x_full > xmin))
+#     index_xmax = np.max(np.where(x_full < xmax))
 
-    x = x_full[index_xmin:index_xmax]
-    y = y_full[index_xmin:index_xmax]
+#     x = x_full[index_xmin:index_xmax]
+#     y = y_full[index_xmin:index_xmax]
 
-    data_range_fit = {}
-    data_range_fit.update({'x': x})
-    data_range_fit.update({'y': y})
+#     data_range_fit = {}
+#     data_range_fit.update({'x': x})
+#     data_range_fit.update({'y': y})
 
-    region.update({'data_to_fit': data_range_fit})
+#     region.update({'data_to_fit': data_range_fit})
 
 
 def linear_background(region):
@@ -495,7 +495,17 @@ def ds(x, intercept, slope, lw, asym, gw, int, e):
             y[i] = dsg.dsgnmEad2(x[i], pp)
         return y
 
+
 # - Then doublets peaks are defined for every core level
+
+def doublet_ratio(x, sos, intercept, slope, lw, asym, gw, int, e, r):
+    '''
+    Doublet for core level with peaks area ratio different than f,d,p
+    '''
+    df_ds_r = ds(x, intercept, slope, lw, asym, gw, int, e) + r * \
+        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
+
+    return df_ds_r
 
 
 def doublet_nf(x, sos, intercept, slope, lw, asym, gw, int, e):
@@ -506,16 +516,6 @@ def doublet_nf(x, sos, intercept, slope, lw, asym, gw, int, e):
         ds(x, intercept, slope, lw, asym, gw, int, e - sos)
 
     return df_ds
-
-
-def doublet_nf_r(x, sos, intercept, slope, lw, asym, gw, int, e, r):
-    '''
-    Doublet for "f" core level
-    '''
-    df_ds_r = ds(x, intercept, slope, lw, asym, gw, int, e) + r * \
-        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
-
-    return df_ds_r
 
 
 def doublet_nd(x, sos, intercept, slope, lw, asym, gw, int, e):
