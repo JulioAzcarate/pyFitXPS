@@ -32,6 +32,14 @@ from lmfit.lineshapes import voigt
 # --- scipy -------------------------------------------------------------------
 from scipy.special import gamma
 
+# --- Local imports -----------------------------------------------------------
+# --- Our own modules ---------------------------------------------------------
+import sys
+# permatent location of functions from pyFitXPS
+sys.path.insert(0, '/home/julio/Python/pyFitXPS/pyfitxps/') # Julio Laptop
+
+import plot_config
+
 
 ###############################################################################
 
@@ -121,52 +129,56 @@ def FL_LDOS(x, m, b, c, A, center, T):
 
 # - - - Composed Function - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-def FermiEdge(region, energy_scale, xmin, xmax, A, c, b, m, T, gw, center):
+def FermiEdge(spectrum, merged_label='all_average', xmin=None, xmax=None, 
+              A=1.0, c=0, b=0, m=0, T=300, gw=0.5, center=0, plot=True):
     """
-    Return the fit of FermiEdge times linear DOS convoluted with a
-    gaussian function
-
+    Fit Fermi edge with linear DOS convoluted with a gaussian function
+    
     Parameters
     ----------
-    region : variable - dict name
-        name of dictionary to containg the VB region to be fitted
-    energy_scale : string
-        which energy scale be selected: 'BE' or 'KE'
-    xmin : float
-        min for range data to fit
-    xmax : float
-        max for range data to fit
-    c : float
-        background noise right to the FermiEdge
-    A : float
-        pre-exponentian factor
-    b : float
-        linear intercept left to the FermiEdge for the linear DOS
-    m : float
-        slope for linear DOS
-    T : float
-        temperature in Kelvin
-    gw : float
-        gaussian with
-    center : float
-        position of the FermiEdge
-
+    spectrum : XPSSpectrum
+        Spectrum object containing the data to fit
+    merged_label : str, optional
+        Label of merged scan to use for fitting
+    xmin, xmax : float, optional
+        Range for fitting. If None, uses full range
+    A, c, b, m : float, optional
+        Initial parameters for linear DOS
+    T : float, optional
+        Temperature in Kelvin
+    gw : float, optional
+        Initial gaussian width
+    center : float, optional
+        Initial center position
+    plot : bool, optional
+        Whether to plot the fit results
+        
     Returns
     -------
-    lmfit fit_report and plot of the fitting results
+    lmfit.ModelResult
+        Fit results object
     """
-
-    # create data from broadened step
-    x_full = region['data_orig'][energy_scale]
-    y_full = region['data_orig']['intensity']
-
-    # range of data to be fitted
-    index_xmin = np.min(np.where(x_full > xmin))
-    index_xmax = np.min(np.where(x_full > xmax))
-
-    x = x_full[index_xmin:index_xmax]
-    y = y_full[index_xmin:index_xmax]
-
+    # Initialize fit_results if it doesn't exist
+    if not hasattr(spectrum, 'fit_results'):
+        spectrum.fit_results = {}
+    
+    # Get data from spectrum
+    if merged_label not in spectrum.working_data.merged_scans:
+        raise KeyError(f"Merged scan '{merged_label}' not found")
+        
+    x_full = spectrum.working_data.binding_energy
+    y_full = spectrum.working_data.merged_scans[merged_label]['data'][0]
+    
+    # Select range
+    if xmin is None:
+        xmin = x_full[0]
+    if xmax is None:
+        xmax = x_full[-1]
+        
+    mask = (x_full >= xmin) & (x_full <= xmax)
+    x = x_full[mask]
+    y = y_full[mask]
+    
     # model
     mod_FL = Model(FL_LDOS, independent_vars=['x'], prefix='FL_')
     mod_g = Model(gauss_nor_area, independent_vars=['x'], prefix='g_')
@@ -175,9 +187,9 @@ def FermiEdge(region, energy_scale, xmin, xmax, A, c, b, m, T, gw, center):
     mod = CompositeModel(mod_FL, mod_g, convolve)
     pars = mod.make_params()
 
-    # used as an integer index, so a very poor fit variable:
+    # Set parameters
     pars['FL_T'].set(value=T, vary=False)
-    pars['FL_center'].set(value=center, min=-2.0, max=-1.0)
+    pars['FL_center'].set(value=center, min=-2.0, max=1.0)
     pars['FL_m'].set(value=m)
     pars['FL_b'].set(value=b)
     pars['FL_c'].set(value=c)
@@ -185,303 +197,157 @@ def FermiEdge(region, energy_scale, xmin, xmax, A, c, b, m, T, gw, center):
     pars['g_center'].set(value=center, expr='FL_center')
     pars['g_gw'].set(value=gw, min=0.2, max=1.5)
 
-    # fit this model to data array y
+    # Fit model
     result = mod.fit(y, params=pars, x=x)
 
-    region.update({'results': result})
-
-    # generate components
-    comps = result.eval_components(x=x)
-
-    # plot results
-    gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 4])
-    fig, axd = plt.subplot_mosaic([['left', 'upper right'],
-                                   ['left', 'lower right']],
-                                  gridspec_kw=gs_kw, #figsize=(5.5, 3.5),
-                                  layout="constrained")
-
-    axd['left'].plot(region['data_orig']['BE'],region['data_orig']['intensity'])
-
-    x0 = x[0] - 0.05*x[0]
-    y0 = y[-1] - 0.2*y[-1]
-    w = abs(x[0]-x[-1]) + 0.05*x[-1]
-    h = abs(y[0]-y[-1]) + 0.1*y[0]
-    rect = Rectangle((x0,y0),w,h, 
-                        fill = False,
-                        color = "purple",
-                        #linewidth = 2
-                        )
-    axd['left'].add_patch(rect)
-    # axd['left'].axvspan(x_full[index_xmin], x_full[index_xmax], y_full[index_xmin], y_full[index_xmax], alpha=0.3, color='grey')
+    # Store results with scaled components
+    spectrum.fit_results['fermi_edge'] = {
+        'result': result,
+        'components': {
+            'Fermi_dist': 10 * result.eval_components(x=x)['FL_'],
+            'Gaussian': 100 * result.eval_components(x=x)['g_']
+        },
+        'x_range': (xmin, xmax),
+        'merged_label': merged_label,
+        'fit_type': 'Fermi Edge'
+    }
     
-    axd['upper right'].plot(x, result.residual, color='C2')
-    axd['lower right'].plot(x,y, 'o')
-    axd['lower right'].plot(x, result.best_fit, color='C1')
-    axd['lower right'].plot(x, 10 * comps['FL_'], '--', color='b',
-                 label='10 x Fermi dist comp')
-    axd['lower right'].plot(x, 100 * comps['g_'], '--', color='r',
-                 label='100 x Gaussian comp')
-    axd['lower right'].set_xlabel(energy_scale + ' [eV]')
-    axd['left'].set_xlabel(energy_scale + ' [eV]')
-    axd['left'].set_ylabel('Intensity')
-    axd['lower right'].legend()
-
-    fig.suptitle('FermiEdge x linear DOS convoluted with gaussian distritution')
-
-    print(result.fit_report())
+    # Plot with default layout if requested
+    if plot:
+        fig, axes = _plot_fermi_edge(spectrum, 'fermi_edge')
+        plt.show()
+    
+    return result
 
 
 
 # - - - Other special functions - - - - - - - - - - - - - - - - - - - - - - - - -
 
-def Energy_Corr_one(region, shift):
+def Energy_Corr(experiment, shift, regions=None):
     """
-    Correction for energy scale
-
+    Apply energy scale correction to selected regions or all regions
+    
     Parameters
     ----------
-    region: string of names for each dict of data
+    experiment : XPSExperiment
+        Experiment containing the spectra to correct
     shift : float
-        value to shift the energy scale in eV.
-
-    Returns
-    -------
-    Update the same selected dictionary with a dict containing the corrected
-    energy scale as numpy.array
-
+        Energy shift value in eV
+    regions : list of str, optional
+        List of region names to correct. If None, corrects all regions
     """
-    # shift = ref_shift['results'].best_values['FL_center']
-
-    BE = region['data_orig']['BE'] - shift
-    KE = region['data_orig']['KE'] - shift
-
-    corr = {}
-    corr.update({'BE': BE})
-    corr.update({'KE': KE})
-    region.update({'data_corr': corr})
-
-    print(shift)
-
-    plot_corr(region)
-
-    # plt.plot(
-    #     region['data_orig']['BE'],
-    #     region['data_orig']['intensity'],
-    #     label='Original Data',
-    #     linestyle='dotted',
-    #     alpha=0.7,
-    #     color='C0')
-    # plt.plot(
-    #     region['data_corr']['BE'],
-    #     region['data_orig']['intensity'],
-    #     label='Corrected Data',
-    #     color='C0')
-    # plt.xlabel('BE [eV]')
-    # plt.ylabel('Intensity [cps]')
-    # plt.legend()
-
-def Energy_Corr_one_FL(region, ref_region):
-    """
-    Correction for energy scale
-
-    Parameters
-    ----------
-    region: string of names for each dict of data
-    shift : float
-        value to shift the energy scale in eV.
-
-    Returns
-    -------
-    Update the same selected dictionary with a dict containing the corrected
-    energy scale as numpy.array
-
-    """
-    shift = ref_region['results'].best_values['FL_center']
-
-    BE = region['data_orig']['BE'] - shift
-    KE = region['data_orig']['KE'] - shift
-
-    corr = {}
-    corr.update({'BE': BE})
-    corr.update({'KE': KE})
-    region.update({'data_corr': corr})
-
-    print(shift)
-
-    plot_corr(region)
-
-def Energy_Corr_list_FL(list_of_regions, ref_region):
-    """
-    Correction for energy scale to every region in the list
-
-    Parameters
-    ----------
-    region: list of dictionary with data
-    ref_region : variable name
-        name of fitted region (valence band) as reference
-
-    Returns
-    -------
-    Update the same selected dictionary with a dict containing the corrected
-    energy scale as numpy.array
-
-    """
-    shift = ref_region['results'].best_values['FL_center']
-
-    for region in list_of_regions:
-        BE = region['data_orig']['BE'] - shift
-        KE = region['data_orig']['KE'] - shift
+    if regions is None:
+        regions = experiment.list_regions()
         
-        corr = {}
-        corr.update({'BE': BE})
-        corr.update({'KE': KE})
-        region.update({'data_corr': corr})
-
-        region.keys()
-
-    print(shift)
-
-
-def Energy_Corr_dict_FL(exper_dict, ref_region):
+    experiment.correct_energy_scale(shift, regions)
+    
+def plot_energy_correction(spectrum, ax=None):
     """
-    Correction for energy scale to every region in the list
-
+    Plot original and corrected energy scales
+    
     Parameters
     ----------
-    region: dictionary with whole experiment's data
-    ref_region : variable name
-        name of fitted region (valence band) as reference
+    spectrum : XPSSpectrum
+        Spectrum to plot
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on. If None, creates new figure
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+        
+    # Plot original data
+    ax.plot(spectrum.original_data.binding_energy, 
+            spectrum.original_data.intensity_scans[0],
+            label='Original Data',
+            linestyle='dotted',
+            alpha=0.7)
+            
+    # Plot corrected data
+    ax.plot(spectrum.working_data.binding_energy,
+            spectrum.working_data.intensity_scans[0],
+            label='Corrected Data')
+            
+    ax.set_xlabel('Binding Energy (eV)')
+    ax.set_ylabel('Intensity (a.u.)')
+    ax.legend()
+    
+    return ax
 
+def list_fits(spectrum):
+    """
+    List all available fits for a spectrum
+    
+    Parameters
+    ----------
+    spectrum : XPSSpectrum
+        Spectrum object to check for fits
+        
     Returns
     -------
-    Update the same selected dictionary with a dict containing the corrected
-    energy scale as numpy.array
-
+    dict
+        Dictionary of fit information if fits exist
     """
-    shift = ref_region['results'].best_values['FL_center']
-
-    for region in exper_dict.keys():
-        BE = exper_dict[region]['data_orig']['BE'] - shift
-        KE = exper_dict[region]['data_orig']['KE'] - shift
+    if not hasattr(spectrum, 'fit_results') or not spectrum.fit_results:
+        print("No fits available for this spectrum")
+        return None
+    
+    print("\nAvailable fits:")
+    print("-" * 40)
+    
+    fit_info = {}
+    for fit_name, fit_data in spectrum.fit_results.items():
+        print(f"\nFit type: {fit_name}")
         
-        corr = {}
-        corr.update({'BE': BE})
-        corr.update({'KE': KE})
-        exper_dict[region].update({'data_corr': corr})
-
-        exper_dict[region].keys()
-
-    print(shift)
-
-
-def plot_corr(region):
-    """
-    Plot the energy shift correction of the region
-    """
-    plt.plot(
-        region['data_orig']['BE'],
-        region['data_orig']['intensity'],
-        label='Original Data',
-        linestyle='dotted',
-        alpha=0.7,
-        color='C0')
-    plt.plot(
-        region['data_corr']['BE'],
-        region['data_orig']['intensity'],
-        label='Corrected Data',
-        color='C0')
-    plt.xlabel('BE [eV]')
-    plt.ylabel('Intensity [cps]')
-    plt.legend()
-
-def plot_Energy_Corr(region):
-    """
-    Plot the energy shift correction for every region defined
-    """
-    if type(region) is dict:
-        plot_corr(region)
-    elif type(region) is list:
-        for i in region:
-            plot_corr(i)
-    else :
-        print("Is not possible to plot the energy shift")
-
-
-
-# def range_to_fit(region, data_set, energy_scale, xmin, xmax):
-#     '''
-#     Function to crop data to be fitted. The range of data is
-#     stored in "region" dictionary in the key:'data_to_fit'.
-
-#     '''
-
-#     # create data from broadened step
-#     if data_set == 'data_orig':
-#         x_full = region['data_orig'][energy_scale]
-#     elif data_set == 'data_corr':
-#         x_full = region['data_corr'][energy_scale]
-#     else:
-#         print('"data_set" is not defined. Please run "region.keys()" to known which "data_set" is present.')
-
-#     # x_full = region['data_corr'][energy_scale]
-#     y_full = region['data_orig']['intensity']
-
-#     # range of data to be fitted
-#     index_xmin = np.min(np.where(x_full > xmin))
-#     index_xmax = np.max(np.where(x_full < xmax))
-
-#     x = x_full[index_xmin:index_xmax]
-#     y = y_full[index_xmin:index_xmax]
-
-#     data_range_fit = {}
-#     data_range_fit.update({'x': x})
-#     data_range_fit.update({'y': y})
-
-#     region.update({'data_to_fit': data_range_fit})
-
-
-def linear_background(region):
-    """
-    Create a linear background parameters and the model named bkgl
-    """
-    # data range to fit
-    x = region['data_to_fit']['x']
-    y = region['data_to_fit']['y']
-
-    # calculate slope and intercept for linear background as initial pars
-    # value from the extremes of data
-    xa = np.mean(x[:5])
-    xb = np.mean(x[-5:])
-    ya = np.mean(y[:5])
-    yb = np.mean(y[-5:])
-
-    m = (yb - ya) / (xb - xa)
-    c = ya - m * xa
-
-    bkgl = LinearModel(independent_vars=['x'], prefix='bkgl_')
-
-    params = Parameters()
-
-    params.add_many(
-        ('bkgl_slope', m, True),
-        ('bkgl_intercept', c, True),
-    )
-
-    region.update({'params': params})
-
-    return bkgl
-
-
-# - - - Importing XPSDoniachs - - - - - - - - - - - -
-#
-# The same as XPSDoniachs.XOP from Igor Pro
-# https://github.com/momentoscope/hextof-processor/tree/master/XPSdoniachs
-# ----------------------------------------------------
-
-# - - - Defining Doniach-Sunjic functions - - -
-
+        # Get basic fit information
+        result = fit_data['result']
+        x_range = fit_data.get('x_range', ('unknown', 'unknown'))
+        merged_label = fit_data.get('merged_label', 'unknown')
+        
+        # Store and display fit information
+        info = {
+            'x_range': x_range,
+            'merged_label': merged_label,
+            'n_variables': len(result.var_names),
+            'success': result.success,
+            'r_squared': result.rsquared,
+        }
+        
+        print(f"  Energy range: {x_range[0]:.2f} to {x_range[1]:.2f} eV")
+        print(f"  Merged scan used: {merged_label}")
+        print(f"  Number of variables: {info['n_variables']}")
+        print(f"  Fit success: {info['success']}")
+        print(f"  R-squared: {info['r_squared']:.4f}")
+        
+        fit_info[fit_name] = info
+    
+    return fit_info
 
 def ds(x, intercept, slope, lw, asym, gw, int, e):
+    """
+    Doniach-Sunjic lineshape function
+    
+    Parameters
+    ----------
+    x : array-like
+        Energy values
+    intercept, slope : float
+        Background parameters
+    lw : float
+        Lorentzian width
+    asym : float
+        Asymmetry parameter
+    gw : float
+        Gaussian width
+    int : float
+        Intensity
+    e : float
+        Peak position
+        
+    Returns
+    -------
+    array-like
+        Calculated DS lineshape
+    """
     pi = [intercept, slope, lw, asym, gw, int, e]
     y = np.zeros_like(x)
     pp = dsg.VectorOfDouble()
@@ -495,44 +361,185 @@ def ds(x, intercept, slope, lw, asym, gw, int, e):
             y[i] = dsg.dsgnmEad2(x[i], pp)
         return y
 
+def fit_ds_peak(spectrum, merged_label='all_average', xmin=None, xmax=None, 
+                peak_type='single', plot=True, **kwargs):
+    """
+    Fit XPS peak with Doniach-Sunjic lineshape
+    
+    Parameters
+    ----------
+    spectrum : XPSSpectrum
+        Spectrum object containing the data to fit
+    merged_label : str, optional
+        Label of merged scan to use for fitting
+    xmin, xmax : float, optional
+        Range for fitting. If None, uses full range
+    peak_type : str, optional
+        Type of peak to fit: 'single', 'doublet_f', 'doublet_d', 'doublet_p', 'doublet_custom'
+    plot : bool, optional
+        Whether to plot the fit results
+    **kwargs : dict
+        Additional parameters for fitting
+        
+    Returns
+    -------
+    lmfit.ModelResult
+        Fit results object
+    """
+    # Get data from spectrum
+    if merged_label not in spectrum.working_data.merged_scans:
+        raise KeyError(f"Merged scan '{merged_label}' not found")
+        
+    x_full = spectrum.working_data.binding_energy
+    y_full = spectrum.working_data.merged_scans[merged_label]['data'][0]
+    
+    # Select range
+    if xmin is None:
+        xmin = x_full[0]
+    if xmax is None:
+        xmax = x_full[-1]
+        
+    mask = (x_full >= xmin) & (x_full <= xmax)
+    x = x_full[mask]
+    y = y_full[mask]
+    
+    # Create model based on peak type
+    if peak_type == 'single':
+        mod = Model(ds, prefix='ds_')
+    elif peak_type == 'doublet_f':
+        mod = Model(doublet_nf, prefix='ds_')
+    elif peak_type == 'doublet_d':
+        mod = Model(doublet_nd, prefix='ds_')
+    elif peak_type == 'doublet_p':
+        mod = Model(doublet_np, prefix='ds_')
+    elif peak_type == 'doublet_custom':
+        mod = Model(doublet_ratio, prefix='ds_')
+    else:
+        raise ValueError(f"Unknown peak type: {peak_type}")
+    
+    # Set up parameters with defaults and user overrides
+    pars = mod.make_params()
+    default_params = {
+        'intercept': 0,
+        'slope': 0,
+        'lw': 0.5,
+        'asym': 0.1,
+        'gw': 0.5,
+        'int': max(y),
+        'e': x[np.argmax(y)]
+    }
+    
+    if 'doublet' in peak_type:
+        default_params.update({
+            'sos': 1.0  # spin-orbit splitting
+        })
+        if peak_type == 'doublet_custom':
+            default_params.update({
+                'r': 0.5  # custom ratio
+            })
+    
+    # Update defaults with user-provided values
+    default_params.update(kwargs)
+    
+    # Set parameters
+    for param, value in default_params.items():
+        if f'ds_{param}' in pars:
+            pars[f'ds_{param}'].set(value=value)
+    
+    # Fit model
+    result = mod.fit(y, params=pars, x=x)
+    
+    # Store results
+    fit_name = f'ds_{peak_type}'
+    spectrum.fit_results[fit_name] = {
+        'result': result,
+        'components': result.eval_components(x=x),
+        'x_range': (xmin, xmax),
+        'merged_label': merged_label,
+        'fit_type': 'Doniach-Sunjic',
+        'peak_type': peak_type
+    }
+    
+    # Plot if requested
+    if plot:
+        plot_config.plot_fit_result(spectrum, fit_name)
+    
+    return result
 
-# - Then doublets peaks are defined for every core level
+def _plot_fit_simple(spectrum, fit_name):
+    """Simple plot for fitting process"""
+    fit_data = spectrum.fit_results[fit_name]
+    result = fit_data['result']
+    xmin, xmax = fit_data['x_range']
+    
+    # Get data in range
+    mask = (spectrum.working_data.binding_energy >= xmin) & \
+           (spectrum.working_data.binding_energy <= xmax)
+    x = spectrum.working_data.binding_energy[mask]
+    y = spectrum.working_data.merged_scans[fit_data['merged_label']]['data'][0][mask]
+    
+    # Simple plot
+    plt.figure()
+    plt.plot(x, y, 'o', label='Data')
+    plt.plot(x, result.best_fit, 'r-', label='Fit')
+    plt.xlabel('Binding Energy (eV)')
+    plt.ylabel('Intensity (a.u.)')
+    plt.legend()
+    plt.show()
 
-def doublet_ratio(x, sos, intercept, slope, lw, asym, gw, int, e, r):
-    '''
-    Doublet for core level with peaks area ratio different than f,d,p
-    '''
-    df_ds_r = ds(x, intercept, slope, lw, asym, gw, int, e) + r * \
-        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
-
-    return df_ds_r
-
-
-def doublet_nf(x, sos, intercept, slope, lw, asym, gw, int, e):
-    '''
-    Doublet for "f" core level
-    '''
-    df_ds = ds(x, intercept, slope, lw, asym, gw, int, e) + 0.75 * \
-        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
-
-    return df_ds
-
-
-def doublet_nd(x, sos, intercept, slope, lw, asym, gw, int, e):
-    '''
-    Doublet for "d" core level
-    '''
-    df_ds = ds(x, intercept, slope, lw, asym, gw, int, e) + 0.667 * \
-        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
-
-    return df_ds
-
-
-def doublet_np(x, sos, intercept, slope, lw, asym, gw, int, e):
-    '''
-    Doublet for "p" core level
-    '''
-    df_ds = ds(x, intercept, slope, lw, asym, gw, int, e) + 0.5 * \
-        ds(x, intercept, slope, lw, asym, gw, int, e - sos)
-
-    return df_ds
+def _plot_fermi_edge(spectrum, fit_name):
+    """Default FermiEdge plot layout"""
+    fit_data = spectrum.fit_results[fit_name]
+    result = fit_data['result']
+    xmin, xmax = fit_data['x_range']
+    
+    # Get data in range
+    mask = (spectrum.working_data.binding_energy >= xmin) & \
+           (spectrum.working_data.binding_energy <= xmax)
+    x = spectrum.working_data.binding_energy[mask]
+    y = spectrum.working_data.merged_scans[fit_data['merged_label']]['data'][0][mask]
+    
+    # Create plot with your original layout
+    gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 4])
+    fig, axd = plt.subplot_mosaic([['left', 'upper right'],
+                                  ['left', 'lower right']],
+                                 gridspec_kw=gs_kw,
+                                 layout="constrained")
+    
+    # Full spectrum plot
+    axd['left'].plot(spectrum.working_data.binding_energy,
+                    spectrum.working_data.intensity_scans[0])
+    
+    # Add rectangle for fit region
+    x0 = xmin - 0.05*abs(xmin)
+    y0 = min(y) - 0.2*abs(min(y))
+    w = abs(xmax-xmin) + 0.05*abs(xmax)
+    h = abs(max(y)-min(y)) + 0.1*abs(max(y))
+    rect = Rectangle((x0,y0), w, h, 
+                    fill=False,
+                    color="purple")
+    axd['left'].add_patch(rect)
+    
+    # Residuals
+    axd['upper right'].plot(x, result.residual, color='C2')
+    
+    # Fit results
+    axd['lower right'].plot(x, y, 'o')
+    axd['lower right'].plot(x, result.best_fit, color='C1')
+    
+    # Components
+    comps = fit_data['components']
+    axd['lower right'].plot(x, comps['Fermi_dist'], '--', color='b',
+                           label='10 x Fermi dist comp')
+    axd['lower right'].plot(x, comps['Gaussian'], '--', color='r',
+                           label='100 x Gaussian comp')
+    
+    # Labels
+    axd['lower right'].set_xlabel('Binding Energy [eV]')
+    axd['left'].set_xlabel('Binding Energy [eV]')
+    axd['left'].set_ylabel('Intensity')
+    axd['lower right'].legend()
+    
+    fig.suptitle('FermiEdge x linear DOS convoluted with gaussian distribution')
+    
+    return fig, axd
